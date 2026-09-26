@@ -48,3 +48,13 @@ def test_train_and_holdout_are_complete_trajectory_recombinations():
     assert set(train.motif.tolist()) == set(held.motif.tolist()) == {0, 1, 2, 3}
     assert set(train.factor_a.tolist()) == set(held.factor_a.tolist()) == {0, 1}
     assert set(train.factor_b.tolist()) == set(held.factor_b.tolist()) == {0, 1}
+
+
+def test_post_junction_observations_do_not_reveal_branch():
+    cfg = default_config()
+    batch = generate_batch(12, 512, "train", cfg)
+    j = cfg["junction_step"]
+    assert np.all(batch.obs_a[:, j:] == 0)
+    assert np.all(batch.obs_b[:, j:] == 0)
+    assert batch.future_tokens.shape == (512, cfg["post_junction_len"])
+    assert len({tuple(row) for row in batch.future_tokens.tolist()}) >= 4
