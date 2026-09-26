@@ -93,7 +93,7 @@ def test_package_exports_version_and_default_config():
     assert csl.__version__ == "0.1.0"
     assert cfg["message_dim"] == 2
     assert cfg["hidden_dim"] == 16
-    assert cfg["junction_step"] > cfg["shared_prefix_start"]
+    assert cfg["junction_step"] == cfg["private_prefix_len"] + cfg["shared_prefix_len"]
 ```
 
 - [ ] **Step 2: Run the smoke test and verify failure**
@@ -104,7 +104,7 @@ Expected: FAIL because package/config does not exist.
 
 - [ ] **Step 3: Implement package config and minimal project metadata**
 
-Create `default_config() -> dict[str, object]` in `src/coupled_sequence_learners/__init__.py`. Pin initial v0 values: hidden_dim 16, message_dim 2, observation_dim 8, branch_count 4, private_prefix_len 6, shared_prefix_len 6, post_junction_len 4, message_noise_std 0.05, training_steps 1200, batch_size 128. Keep thresholds out of this function; they belong in `predictions.json`.
+Create `default_config() -> dict[str, object]` in `src/coupled_sequence_learners/__init__.py`. Pin initial v0 values: hidden_dim 16, message_dim 2, observation_dim 8, branch_count 4, private_prefix_len 6, shared_prefix_len 6, junction_step 12, post_junction_len 4, message_noise_std 0.05, training_steps 1200, batch_size 128. Keep thresholds out of this function; they belong in `predictions.json`.
 
 - [ ] **Step 4: Add README and experiment log headers**
 
