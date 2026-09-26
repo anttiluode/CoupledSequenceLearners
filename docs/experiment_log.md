@@ -4,15 +4,17 @@
 
 - Approved design: `docs/superpowers/specs/2026-09-26-coupled-sequence-learners-design.md`
 - Implementation plan: `docs/superpowers/plans/2026-09-26-coupled-sequence-learners-v0.md`
-- Current scientific status: NOT RUN
+- Current scientific status: PREREGISTERED, FROZEN RUN NOT YET STARTED
 
 ## Preregistration
 
-Not frozen yet. No full frozen-seed results may be interpreted before `predictions.json` is committed.
+Frozen before any full seed run.
 
-## Exploratory / not preregistered
-
-No pilots yet.
+- code base SHA: `dfa9e6522c7a2db2f4d088eb470cad43bb371e36`
+- seeds: `[11, 23, 37, 53, 71, 89, 107, 131]`
+- counterfactual: antipodal query `q XOR 3`
+- preregistration digest: `sha256:e67e4533c01659d9d5ca42bcfcedb4225ccf1ce2401f49de451822ffe043a8cb`
+- thresholds: exactly those in `predictions.json`; no full frozen-seed run occurred before this file was written.
 
 ## Exploratory / not preregistered — Task 8 pilot
 
