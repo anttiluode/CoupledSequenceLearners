@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import numpy as np
 
 
@@ -16,18 +16,29 @@ class EpisodeBatch:
     motif: np.ndarray
     variant: np.ndarray
     future_tokens: np.ndarray
+    b_bits: np.ndarray
 
 
-def _private_pattern(length: int, first: int, second: int, factor: int, dim: int) -> np.ndarray:
+def _a_private_pattern(length: int, query: int, dim: int) -> np.ndarray:
     x = np.zeros((length, dim), dtype=np.float32)
-    early, late = 1, length - 2
-    if factor == 0:
-        x[early, first] = 1.0
-        x[late, second] = 1.0
-    else:
-        x[early, second] = 1.0
-        x[late, first] = 1.0
+    # Four query states encoded by two signed temporal features. The query is
+    # private to A until the communication phase starts at the junction.
+    bit0 = (query >> 0) & 1
+    bit1 = (query >> 1) & 1
+    x[1, 0] = 1.0 if bit0 else -1.0
+    x[length - 2, 1] = 1.0 if bit1 else -1.0
     return x
+
+
+def _b_private_pattern(length: int, context: int, dim: int) -> tuple[np.ndarray, np.ndarray]:
+    x = np.zeros((length, dim), dtype=np.float32)
+    bits = np.array([(context >> i) & 1 for i in range(4)], dtype=np.int64)
+    # B holds four candidate answers. A's query chooses which one matters.
+    # Two binary channel symbols cannot losslessly publish all 16 contexts at
+    # once; B must hear the query to know which answer to return.
+    for i, bit in enumerate(bits):
+        x[i, i] = 1.0 if bit else -1.0
+    return x, bits
 
 
 def _shared_pattern(length: int, motif: int, dim: int) -> np.ndarray:
@@ -39,8 +50,14 @@ def _shared_pattern(length: int, motif: int, dim: int) -> np.ndarray:
     return x
 
 
-def _is_heldout(fa: int, fb: int, motif: int, variant: int) -> bool:
-    return variant == ((fa + 2 * fb + motif) & 1)
+def _is_heldout(query: int, context: int, motif: int, variant: int) -> bool:
+    return variant == ((query + context + motif) & 1)
+
+
+def _branch_for(query: int, bits: np.ndarray) -> int:
+    # Query selects one of B's four hidden bits. That bit toggles the query's
+    # low branch bit, leaving four balanced branch classes overall.
+    return int(query ^ int(bits[query]))
 
 
 def generate_batch(seed: int, batch_size: int, split: str, config: dict) -> EpisodeBatch:
@@ -56,33 +73,40 @@ def generate_batch(seed: int, batch_size: int, split: str, config: dict) -> Epis
 
     obs_a = np.zeros((batch_size, total_len, dim), dtype=np.float32)
     obs_b = np.zeros_like(obs_a)
-    fa_arr = np.empty(batch_size, dtype=np.int64)
-    fb_arr = np.empty(batch_size, dtype=np.int64)
+    qa = np.empty(batch_size, dtype=np.int64)
+    context_arr = np.empty(batch_size, dtype=np.int64)
     motif_arr = np.empty(batch_size, dtype=np.int64)
     variant_arr = np.empty(batch_size, dtype=np.int64)
     branch_arr = np.empty(batch_size, dtype=np.int64)
     future_tokens = np.empty((batch_size, post_len), dtype=np.int64)
+    b_bits = np.empty((batch_size, 4), dtype=np.int64)
 
     n = 0
     while n < batch_size:
-        fa = int(rng.integers(0, 2))
-        fb = int(rng.integers(0, 2))
+        query = int(rng.integers(0, 4))
+        context = int(rng.integers(0, 16))
         motif = int(rng.integers(0, 4))
         variant = int(rng.integers(0, 2))
-        held = _is_heldout(fa, fb, motif, variant)
+        held = _is_heldout(query, context, motif, variant)
         if (split == "heldout") != held:
             continue
-        branch = 2 * fa + fb
-        a = _private_pattern(private_len, 0, 1, fa, dim)
-        b = _private_pattern(private_len, 2, 3, fb, dim)
+        a = _a_private_pattern(private_len, query, dim)
+        b, bits = _b_private_pattern(private_len, context, dim)
         shared = _shared_pattern(shared_len, motif, dim)
-        future = np.zeros((post_len, dim), dtype=np.float32)
-        obs_a[n] = np.concatenate([a, shared, future], axis=0)
-        obs_b[n] = np.concatenate([b, shared, future], axis=0)
-        fa_arr[n], fb_arr[n] = fa, fb
-        motif_arr[n], variant_arr[n] = motif, variant
+        future_obs = np.zeros((post_len, dim), dtype=np.float32)
+        branch = _branch_for(query, bits)
+        obs_a[n] = np.concatenate([a, shared, future_obs], axis=0)
+        obs_b[n] = np.concatenate([b, shared, future_obs], axis=0)
+        qa[n] = query
+        context_arr[n] = context
+        motif_arr[n] = motif
+        variant_arr[n] = variant
         branch_arr[n] = branch
-        future_tokens[n] = np.array([(branch + (variant if t % 2 else 0)) % 4 for t in range(post_len)], dtype=np.int64)
+        b_bits[n] = bits
+        future_tokens[n] = np.array(
+            [(branch + (variant if t % 2 else 0)) % 4 for t in range(post_len)],
+            dtype=np.int64,
+        )
         n += 1
 
     ids = np.arange(batch_size, dtype=np.int64) + np.int64(seed) * 1_000_000
@@ -92,16 +116,20 @@ def generate_batch(seed: int, batch_size: int, split: str, config: dict) -> Epis
         branch=branch_arr,
         junction_step=junction,
         episode_id=ids,
-        factor_a=fa_arr,
-        factor_b=fb_arr,
+        factor_a=qa,
+        factor_b=context_arr,
         motif=motif_arr,
         variant=variant_arr,
         future_tokens=future_tokens,
+        b_bits=b_bits,
     )
 
 
 def heldout_signature(batch: EpisodeBatch) -> list[tuple[int, int, int, int]]:
-    return [(int(a), int(b), int(m), int(v)) for a, b, m, v in zip(batch.factor_a, batch.factor_b, batch.motif, batch.variant)]
+    return [
+        (int(a), int(b), int(m), int(v))
+        for a, b, m, v in zip(batch.factor_a, batch.factor_b, batch.motif, batch.variant)
+    ]
 
 
 def shared_only_branch_counts(batch: EpisodeBatch) -> np.ndarray:
@@ -109,3 +137,23 @@ def shared_only_branch_counts(batch: EpisodeBatch) -> np.ndarray:
     for motif, branch in zip(batch.motif, batch.branch):
         counts[int(motif), int(branch)] += 1
     return counts
+
+
+def with_counterfactual_queries(batch: EpisodeBatch, config: dict, queries: np.ndarray) -> EpisodeBatch:
+    queries = np.asarray(queries, dtype=np.int64)
+    if queries.shape != batch.factor_a.shape:
+        raise ValueError("counterfactual query shape mismatch")
+    if np.any((queries < 0) | (queries > 3)):
+        raise ValueError("queries must be in 0..3")
+    obs_a = batch.obs_a.copy()
+    private_len = int(config["private_prefix_len"])
+    for i, query in enumerate(queries):
+        obs_a[i, :private_len] = _a_private_pattern(private_len, int(query), obs_a.shape[-1])
+    branches = np.array([_branch_for(int(q), bits) for q, bits in zip(queries, batch.b_bits)], dtype=np.int64)
+    future_tokens = np.empty_like(batch.future_tokens)
+    for i, (branch, variant) in enumerate(zip(branches, batch.variant)):
+        future_tokens[i] = np.array(
+            [(int(branch) + (int(variant) if t % 2 else 0)) % 4 for t in range(future_tokens.shape[1])],
+            dtype=np.int64,
+        )
+    return replace(batch, obs_a=obs_a, branch=branches, factor_a=queries.copy(), future_tokens=future_tokens)
