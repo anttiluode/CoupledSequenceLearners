@@ -1,0 +1,67 @@
+{
+  "attackers": [
+    "yoked",
+    "one_way_a_to_b",
+    "one_way_b_to_a",
+    "frozen_partner",
+    "time_shuffled",
+    "isolated_a",
+    "isolated_b",
+    "partner_swap",
+    "coordinate_gauge",
+    "centralized_ceiling"
+  ],
+  "claim_boundary": "synthetic reciprocal causal feedback only",
+  "config": {
+    "batch_size": 128,
+    "branch_count": 4,
+    "centralized_steps": 500,
+    "eval_batch_size": 512,
+    "hidden_dim": 16,
+    "junction_step": 12,
+    "learning_rate": 0.01,
+    "message_dim": 2,
+    "message_noise_std": 0.05,
+    "observation_dim": 8,
+    "post_junction_len": 4,
+    "pretraining_steps": 250,
+    "private_prefix_len": 6,
+    "shared_prefix_len": 6,
+    "shared_prefix_start": 6,
+    "training_steps": 1200
+  },
+  "content_digest": "sha256:e67e4533c01659d9d5ca42bcfcedb4225ccf1ce2401f49de451822ffe043a8cb",
+  "counterfactual_query_xor_mask": 3,
+  "frozen_at": "2026-09-26T13:44:00+03:00",
+  "gates": {
+    "centralized_accuracy_mean_min": 0.9,
+    "gauge_logits_max_abs_diff_max": 1e-06,
+    "heldout_recombination_live_accuracy_mean_min": 0.6,
+    "live_accuracy_mean_min": 0.7,
+    "live_minus_yoked_mean_min": 0.1,
+    "live_minus_yoked_positive_seeds_min": 6,
+    "live_yoked_message_scalar_count_equal": true
+  },
+  "git_base_sha": "dfa9e6522c7a2db2f4d088eb470cad43bb371e36",
+  "primary_metric": "heldout counterfactual branch_accuracy: live - yoked",
+  "schema_version": 1,
+  "secondary_hypotheses": {
+    "listener_first_order": [
+      "state_dependent",
+      "state_independent",
+      "fresh"
+    ],
+    "partner_swap_accuracy_drop_mean_min": 0.05
+  },
+  "seeds": [
+    11,
+    23,
+    37,
+    53,
+    71,
+    89,
+    107,
+    131
+  ],
+  "status": "FROZEN"
+}
