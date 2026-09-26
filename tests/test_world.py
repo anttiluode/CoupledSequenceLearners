@@ -19,7 +19,7 @@ def test_private_information_is_distributed():
         assert len(set(batch.branch[batch.factor_a == fa].tolist())) >= 2
     for fb in (0, 1):
         assert len(set(batch.branch[batch.factor_b == fb].tolist())) >= 2
-    expected = batch.factor_a * 2 + batch.factor_b
+    expected = np.array([int(q) ^ int(bits[int(q)]) for q, bits in zip(batch.factor_a, batch.b_bits)])
     assert np.array_equal(batch.branch, expected)
 
 
@@ -46,8 +46,8 @@ def test_train_and_holdout_are_complete_trajectory_recombinations():
     held_sigs = set(heldout_signature(held))
     assert train_sigs.isdisjoint(held_sigs)
     assert set(train.motif.tolist()) == set(held.motif.tolist()) == {0, 1, 2, 3}
-    assert set(train.factor_a.tolist()) == set(held.factor_a.tolist()) == {0, 1}
-    assert set(train.factor_b.tolist()) == set(held.factor_b.tolist()) == {0, 1}
+    assert set(train.factor_a.tolist()) == set(held.factor_a.tolist()) == {0, 1, 2, 3}
+    assert set(train.factor_b.tolist()) == set(held.factor_b.tolist()) == set(range(16))
 
 
 def test_post_junction_observations_do_not_reveal_branch():
@@ -57,4 +57,20 @@ def test_post_junction_observations_do_not_reveal_branch():
     assert np.all(batch.obs_a[:, j:] == 0)
     assert np.all(batch.obs_b[:, j:] == 0)
     assert batch.future_tokens.shape == (512, cfg["post_junction_len"])
+    # Targets still encode the continuation; observations do not.
     assert len({tuple(row) for row in batch.future_tokens.tolist()}) >= 4
+
+
+def test_world_uses_late_query_against_larger_listener_context():
+    cfg = default_config()
+    batch = generate_batch(44, 4096, "train", cfg)
+    assert set(batch.factor_a.tolist()) == {0, 1, 2, 3}
+    assert len(set(batch.factor_b.tolist())) >= 12
+    # A query alone leaves two possible answers; B context alone leaves multiple
+    # possible query-conditioned branches.
+    for q in range(4):
+        assert len(set(batch.branch[batch.factor_a == q].tolist())) == 2
+    for ctx in np.unique(batch.factor_b):
+        rows = batch.branch[batch.factor_b == ctx]
+        if len(rows) >= 8:
+            assert len(set(rows.tolist())) >= 2
