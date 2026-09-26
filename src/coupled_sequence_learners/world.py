@@ -15,6 +15,7 @@ class EpisodeBatch:
     factor_b: np.ndarray
     motif: np.ndarray
     variant: np.ndarray
+    future_tokens: np.ndarray
 
 
 def _private_pattern(length: int, first: int, second: int, factor: int, dim: int) -> np.ndarray:
@@ -35,14 +36,6 @@ def _shared_pattern(length: int, motif: int, dim: int) -> np.ndarray:
     c1 = 4 + ((motif + 1) % 4)
     for t in range(length):
         x[t, c0 if t % 2 == 0 else c1] = 1.0
-    return x
-
-
-def _future_pattern(length: int, branch: int, variant: int, dim: int) -> np.ndarray:
-    x = np.zeros((length, dim), dtype=np.float32)
-    for t in range(length):
-        channel = (branch + (variant if t % 2 else 0)) % min(4, dim)
-        x[t, channel] = 1.0
     return x
 
 
@@ -68,6 +61,7 @@ def generate_batch(seed: int, batch_size: int, split: str, config: dict) -> Epis
     motif_arr = np.empty(batch_size, dtype=np.int64)
     variant_arr = np.empty(batch_size, dtype=np.int64)
     branch_arr = np.empty(batch_size, dtype=np.int64)
+    future_tokens = np.empty((batch_size, post_len), dtype=np.int64)
 
     n = 0
     while n < batch_size:
@@ -82,16 +76,28 @@ def generate_batch(seed: int, batch_size: int, split: str, config: dict) -> Epis
         a = _private_pattern(private_len, 0, 1, fa, dim)
         b = _private_pattern(private_len, 2, 3, fb, dim)
         shared = _shared_pattern(shared_len, motif, dim)
-        future = _future_pattern(post_len, branch, variant, dim)
+        future = np.zeros((post_len, dim), dtype=np.float32)
         obs_a[n] = np.concatenate([a, shared, future], axis=0)
         obs_b[n] = np.concatenate([b, shared, future], axis=0)
         fa_arr[n], fb_arr[n] = fa, fb
         motif_arr[n], variant_arr[n] = motif, variant
         branch_arr[n] = branch
+        future_tokens[n] = np.array([(branch + (variant if t % 2 else 0)) % 4 for t in range(post_len)], dtype=np.int64)
         n += 1
 
     ids = np.arange(batch_size, dtype=np.int64) + np.int64(seed) * 1_000_000
-    return EpisodeBatch(obs_a, obs_b, branch_arr, junction, ids, fa_arr, fb_arr, motif_arr, variant_arr)
+    return EpisodeBatch(
+        obs_a=obs_a,
+        obs_b=obs_b,
+        branch=branch_arr,
+        junction_step=junction,
+        episode_id=ids,
+        factor_a=fa_arr,
+        factor_b=fb_arr,
+        motif=motif_arr,
+        variant=variant_arr,
+        future_tokens=future_tokens,
+    )
 
 
 def heldout_signature(batch: EpisodeBatch) -> list[tuple[int, int, int, int]]:
