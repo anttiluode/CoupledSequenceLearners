@@ -39,9 +39,15 @@ class CoupledLearner(nn.Module):
     def clone_state(self, state: Tensor) -> Tensor:
         return state.detach().clone()
 
+    def emit_from_state(self, state: Tensor) -> Tensor:
+        return torch.tanh(self.message_head(state))
+
+    def logits_from_state(self, state: Tensor) -> Tensor:
+        return self.branch_head(state)
+
     def forward_step(self, obs: Tensor, inbound: Tensor, state: Tensor) -> StepOutput:
         modulation = self.inbound(torch.cat([state, inbound], dim=-1))
         next_state = self.core(torch.cat([obs, modulation], dim=-1), state)
-        message = torch.tanh(self.message_head(next_state))
-        logits = self.branch_head(next_state)
+        message = self.emit_from_state(next_state)
+        logits = self.logits_from_state(next_state)
         return StepOutput(next_state, message, logits, modulation)
